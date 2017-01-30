@@ -12,6 +12,17 @@
 # Author:
 #   Dan Poltawski <dan@moodle.com>
 
+extractRelevantLogLines = (log) ->
+    lines = log.split('\n');
+    logs = []
+    for logline in lines
+        if logline.match(/Build step \'Execute shell\' marked build as failure/)
+            return logs.join('\n')
+        if logline.match(/^Notifying endpoint/)
+            return logs.join('\n')
+        logs.push logline
+    return logs.join('\n')
+
 module.exports = (robot) ->
     if !process.env.JENKINS_NOTIFY_ROOMS?
         throw new Error('JENKINS_NOTIFY_ROOMS is not set.')
@@ -44,16 +55,20 @@ module.exports = (robot) ->
         if !data.build.status?
             res.status(500).send('No status provided')
             return
+    
         status = data.build.status
-
         storagekey = 'jenkins-build-' + data.url
-
         lastKnownState = robot.brain.get(storagekey)
 
         shouldNotify = false
         if lastKnownState != status
             robot.logger.info 'State of '+data.url+' changed'
-            shouldNotify = true
+            if lastKnownState
+                shouldNotify = true
+            else if status != "SUCCESS"
+                shouldNotify = true
+            else
+                shouldNotify = false
         else 
             robot.logger.info 'State of '+data.url+' same'
         
@@ -62,18 +77,30 @@ module.exports = (robot) ->
         emoji = ""
         friendlytext = ""
         extrainfo = ""
+        # Fix a particular markdown annoyance..
+        fullurl = data.build['full_url'].replace(/\(/g, "%28").replace(/\)/g, "%29");
+
         switch status
             when "FAILURE"
-                emoji = "⚠️️"
-                friendlytext = "failed"
-                extrainfo += "```\n#{data.build.log}\n```" if data.build.log?
-                extrainfo += "[Console Output for ##{data.build.number}](#{data.build['full_url']}/console)"
+                emoji = "⛔️"
+                friendlytext = "has failed"
+                if data.build.log
+                    log = extractRelevantLogLines data.build.log
+                    extrainfo += "```\n#{log}\n```"
+                    console.log(data.build.log);
+                extrainfo += "[Console Output for ##{data.build.number}](#{fullurl}/console)"
             when "SUCCESS"
                 emoji = "✅"
-                friendlytext = "passed"
+                friendlytext = "has passed"
+            when "ABORTED"
+                emoji = "🛑"
+                friendlytext = "was aborted"
+            when "UNSTABLE"
+                emoji = "⚠️️"
+                friendlytext = "is unstable"
 
         if shouldNotify
-            message = "#{emoji} #{data.name} [build ##{data.build.number}](#{data.build['full_url']}) #{friendlytext}"
+            message = "#{emoji} #{data.name} [build ##{data.build.number}](#{fullurl}) #{friendlytext}"
             message += "\n#{extrainfo}" if extrainfo?
             robot.messageRoom roomid, message
 
