@@ -29,6 +29,36 @@ extractRelevantLogLines = (log) ->
 
     return logs.join('\n')
 
+generateRoomMessage = (name, build) ->
+    emoji = ""
+    friendlytext = ""
+    extrainfo = ""
+    # Fix a particular markdown annoyance..
+    fullurl = build['full_url'].replace(/\(/g, "%28").replace(/\)/g, "%29")
+
+    switch build.status
+        when "FAILURE"
+            emoji = "⛔️"
+            friendlytext = "has failed"
+            if build.log
+                log = extractRelevantLogLines build.log
+                extrainfo += "```\n#{log}\n```"
+            extrainfo += "[Console Output for ##{build.number}](#{fullurl}console)"
+        when "SUCCESS"
+            emoji = "✅"
+            friendlytext = "has passed"
+        when "ABORTED"
+            emoji = "🛑"
+            friendlytext = "was aborted"
+        when "UNSTABLE"
+            emoji = "⚠️️"
+            friendlytext = "is unstable"
+
+    urlinfo = urllib.parse build['full_url']
+    message = "#{emoji} [#{name}] [build ##{build.number}](#{fullurl}) #{friendlytext} on #{urlinfo.hostname}"
+    message += "\n#{extrainfo}" if extrainfo?
+    return message
+
 module.exports = (robot) ->
     if !process.env.JENKINS_NOTIFY_ROOMS?
         throw new Error('JENKINS_NOTIFY_ROOMS is not set.')
@@ -40,21 +70,19 @@ module.exports = (robot) ->
     robot.router.post '/hubot/jenkinsnotify', (req, res) ->
         data = if req.body.payload? then JSON.parse req.body.payload else req.body
 
-        if !data.build? || !data.build.phase? || !data.build['full_url']
+        if !data.build? or !data.build.phase? or !data.build['full_url']
             res.status(400).send('Bad request')
             return
-
-        rooms_to_inform = Object.keys(room_config).filter (url) ->
-            return data.build['full_url'].indexOf(url) == 0
         
-        if !rooms_to_inform.length
-            robot.logger.info("Cant find room configuration for #{data.build['full_url']}")
+        servername = data.build['full_url'].replace("/#{data.url}#{data.build.number}/", '')
+
+        roomid = room_config[servername]
+        if !roomid
+            robot.logger.info("Cant find room configuration for #{servername}")
             res.status(404).send('Not found')
             return;
     
-        roomid = room_config[rooms_to_inform[0]]
-
-        if data.build.phase != 'COMPLETED'
+        if data.build.phase isnt 'COMPLETED'
             res.status(200).send("Ignoring phrase #{data.build.phase}")
             return
 
@@ -63,51 +91,26 @@ module.exports = (robot) ->
             return
     
         status = data.build.status
-        storagekey = 'jenkins-build-' + data.url
-        lastKnownState = robot.brain.get(storagekey)
+        key = "#{servername}/#{data.url}"
+        lastKnownState = robot.brain.get(key)
+        robot.brain.set key, status
 
         shouldNotify = false
-        if lastKnownState != status
-            robot.logger.info 'State of '+data.url+' changed'
+        actioninfo = "no notification sent."
+        if lastKnownState isnt status
             if lastKnownState
+                actioninfo = "notifying as state changed."
                 shouldNotify = true
-            else if status != "SUCCESS"
+            else if status isnt "SUCCESS"
+                actioninfo = "notifying as non-success state."
                 shouldNotify = true
-            else
-                shouldNotify = false
-        else 
-            robot.logger.info 'State of '+data.url+' same'
-        
-        robot.brain.set storagekey, status
+        else if req.query.alwaysinform and status isnt "SUCCESS"
+            actioninfo = "notifying as 'alwaysinform' set."
+            shouldNotify = true
 
-        emoji = ""
-        friendlytext = ""
-        extrainfo = ""
-        urlinfo = urllib.parse data.build['full_url']
-        # Fix a particular markdown annoyance..
-        fullurl = data.build['full_url'].replace(/\(/g, "%28").replace(/\)/g, "%29");
-
-        switch status
-            when "FAILURE"
-                emoji = "⛔️"
-                friendlytext = "has failed"
-                if data.build.log
-                    log = extractRelevantLogLines data.build.log
-                    extrainfo += "```\n#{log}\n```"
-                extrainfo += "[Console Output for ##{data.build.number}](#{fullurl}console)"
-            when "SUCCESS"
-                emoji = "✅"
-                friendlytext = "has passed"
-            when "ABORTED"
-                emoji = "🛑"
-                friendlytext = "was aborted"
-            when "UNSTABLE"
-                emoji = "⚠️️"
-                friendlytext = "is unstable"
+        robot.logger.info "#{key} state was '#{lastKnownState}' now '#{status}' #{actioninfo}"
 
         if shouldNotify
-            message = "#{emoji} [#{data.name}] [build ##{data.build.number}](#{fullurl}) #{friendlytext} on #{urlinfo.hostname}"
-            message += "\n#{extrainfo}" if extrainfo?
-            robot.messageRoom roomid, message
-
+            robot.messageRoom roomid, generateRoomMessage(data.name, data.build)
+        
         res.status(200).send('OK')
