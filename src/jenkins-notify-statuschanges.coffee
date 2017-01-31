@@ -12,15 +12,21 @@
 # Author:
 #   Dan Poltawski <dan@moodle.com>
 
+urllib = require 'url'
 extractRelevantLogLines = (log) ->
     lines = log.split('\n');
     logs = []
     for logline in lines
-        if logline.match(/Build step \'Execute shell\' marked build as failure/)
+        if logline.match(/^\[...truncated (.*)...]$/)
+            continue
+        if logline.match(/^Build step (.*) marked build as failure$/)
+            # End of relevant log lines
             return logs.join('\n')
         if logline.match(/^Notifying endpoint/)
             return logs.join('\n')
+
         logs.push logline
+
     return logs.join('\n')
 
 module.exports = (robot) ->
@@ -77,6 +83,7 @@ module.exports = (robot) ->
         emoji = ""
         friendlytext = ""
         extrainfo = ""
+        urlinfo = urllib.parse data.build['full_url']
         # Fix a particular markdown annoyance..
         fullurl = data.build['full_url'].replace(/\(/g, "%28").replace(/\)/g, "%29");
 
@@ -87,8 +94,7 @@ module.exports = (robot) ->
                 if data.build.log
                     log = extractRelevantLogLines data.build.log
                     extrainfo += "```\n#{log}\n```"
-                    console.log(data.build.log);
-                extrainfo += "[Console Output for ##{data.build.number}](#{fullurl}/console)"
+                extrainfo += "[Console Output for ##{data.build.number}](#{fullurl}console)"
             when "SUCCESS"
                 emoji = "✅"
                 friendlytext = "has passed"
@@ -100,7 +106,7 @@ module.exports = (robot) ->
                 friendlytext = "is unstable"
 
         if shouldNotify
-            message = "#{emoji} #{data.name} [build ##{data.build.number}](#{fullurl}) #{friendlytext}"
+            message = "#{emoji} [#{data.name}] [build ##{data.build.number}](#{fullurl}) #{friendlytext} on #{urlinfo.hostname}"
             message += "\n#{extrainfo}" if extrainfo?
             robot.messageRoom roomid, message
 
