@@ -1,7 +1,7 @@
 {
   "name": "hubot-jenkins-notify-statuschanges",
   "description": "Notify if jenkins job status changes",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "author": "Dan Poltawski <dan@moodle.com>",
   "license": "MIT",
 
