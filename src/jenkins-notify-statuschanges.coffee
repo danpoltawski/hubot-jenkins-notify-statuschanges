@@ -2,7 +2,7 @@
 #   Notify if jenkins job status changes
 #
 # Configuration:
-#   JENKINS_NOTIFY_ROOMS
+#   HUBOT_JENKINS_NOTIFY_ROOMS
 #
 # Commands:
 #
@@ -60,12 +60,12 @@ generateRoomMessage = (name, build) ->
     return message
 
 module.exports = (robot) ->
-    if !process.env.JENKINS_NOTIFY_ROOMS?
-        throw new Error('JENKINS_NOTIFY_ROOMS is not set.')
+    if !process.env.HUBOT_JENKINS_NOTIFY_ROOMS?
+        throw new Error('HUBOT_JENKINS_NOTIFY_ROOMS is not set.')
     
-    room_config = JSON.parse process.env.JENKINS_NOTIFY_ROOMS
+    room_config = JSON.parse process.env.HUBOT_JENKINS_NOTIFY_ROOMS
     if !Object.keys(room_config).length
-        throw new Error('JENKINS_NOTIFY_ROOMS is empty')
+        throw new Error('HUBOT_JENKINS_NOTIFY_ROOMS is empty')
 
     robot.router.post '/hubot/jenkinsnotify', (req, res) ->
         data = if req.body.payload? then JSON.parse req.body.payload else req.body
