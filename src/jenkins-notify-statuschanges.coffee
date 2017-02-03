@@ -13,6 +13,37 @@
 #   Dan Poltawski <dan@moodle.com>
 
 urllib = require 'url'
+request = require 'request'
+
+if !process.env.HUBOT_JENKINS_NOTIFY_ROOMS?
+    throw new Error('HUBOT_JENKINS_NOTIFY_ROOMS is not set.')
+
+room_config = JSON.parse process.env.HUBOT_JENKINS_NOTIFY_ROOMS
+if !Object.keys(room_config).length
+    throw new Error('HUBOT_JENKINS_NOTIFY_ROOMS is empty')
+
+getBuildStatusFromServer = (robot, server, roomid) ->
+    options = {url: "#{server}/api/json?depth=1&tree=jobs[displayName,url,lastBuild[result,number]]", timeout: 3000}
+
+    request options, (err, resp, body) ->
+        if err
+            robot.logger.info "Failed getting status from #{server}"
+            return
+        try
+            data = JSON.parse(body)
+            failedjobs = (job for job in data.jobs when job.lastBuild.result != "SUCCESS")
+        catch
+            failedjobs = []
+
+        failedbuilds = []
+        for job in failedjobs
+            robot.brain.set job.url, job.lastBuild.result
+            build = {'full_url': "#{job.url}/#{job.lastBuild.number}", 'status': job.lastBuild.result, 'number':job.lastBuild.number}
+            failedbuilds.push generateRoomMessage(job.displayName, build)
+        
+        if failedbuilds.length > 0
+            robot.messageRoom roomid, "Bot has restarted - refreshed #{server} status:\n" + failedbuilds.join('\n')
+
 extractRelevantLogLines = (log) ->
     lines = log.split('\n');
     logs = []
@@ -56,16 +87,13 @@ generateRoomMessage = (name, build) ->
 
     urlinfo = urllib.parse build['full_url']
     message = "#{emoji} [#{name}] [build ##{build.number}](#{fullurl}) #{friendlytext} on #{urlinfo.hostname}"
-    message += "\n#{extrainfo}" if extrainfo?
+    message += "\n#{extrainfo}" if extrainfo
     return message
 
 module.exports = (robot) ->
-    if !process.env.HUBOT_JENKINS_NOTIFY_ROOMS?
-        throw new Error('HUBOT_JENKINS_NOTIFY_ROOMS is not set.')
-    
-    room_config = JSON.parse process.env.HUBOT_JENKINS_NOTIFY_ROOMS
-    if !Object.keys(room_config).length
-        throw new Error('HUBOT_JENKINS_NOTIFY_ROOMS is empty')
+
+    for server, roomid of room_config
+        getBuildStatusFromServer(robot, server, roomid)
 
     robot.router.post '/hubot/jenkinsnotify', (req, res) ->
         data = if req.body.payload? then JSON.parse req.body.payload else req.body
