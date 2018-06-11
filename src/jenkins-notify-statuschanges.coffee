@@ -22,6 +22,10 @@ room_config = JSON.parse process.env.HUBOT_JENKINS_NOTIFY_ROOMS
 if !Object.keys(room_config).length
     throw new Error('HUBOT_JENKINS_NOTIFY_ROOMS is empty')
 
+skip_config = []
+if process.env.HUBOT_JENKINS_SKIP_NOTIFICATION?
+    skip_config = JSON.parse process.env.HUBOT_JENKINS_SKIP_NOTIFICATION
+
 getBuildStatusFromServer = (robot, server, roomid) ->
     options = {url: "#{server}/api/json?depth=1&tree=jobs[displayName,url,lastBuild[result,number]]", timeout: 3000}
 
@@ -40,7 +44,7 @@ getBuildStatusFromServer = (robot, server, roomid) ->
             robot.brain.set job.url, job.lastBuild.result
             build = {'full_url': "#{job.url}/#{job.lastBuild.number}", 'status': job.lastBuild.result, 'number':job.lastBuild.number}
             failedbuilds.push generateRoomMessage(job.displayName, build)
-        
+
         if failedbuilds.length > 0
             robot.messageRoom roomid, "Bot has restarted - refreshed #{server} status:\n" + failedbuilds.join('\n')
 
@@ -101,7 +105,7 @@ module.exports = (robot) ->
         if !data.build? or !data.build.phase? or !data.build['full_url']
             res.status(400).send('Bad request')
             return
-        
+
         servername = data.build['full_url'].replace("/#{data.url}#{data.build.number}/", '')
 
         roomid = room_config[servername]
@@ -109,7 +113,7 @@ module.exports = (robot) ->
             robot.logger.info("Cant find room configuration for #{servername}")
             res.status(404).send('Not found')
             return;
-    
+
         if data.build.phase isnt 'COMPLETED'
             res.status(200).send("Ignoring phrase #{data.build.phase}")
             return
@@ -117,16 +121,20 @@ module.exports = (robot) ->
         if !data.build.status?
             res.status(500).send('No status provided')
             return
-    
+
         status = data.build.status
         key = "#{servername}/#{data.url}"
         lastKnownState = robot.brain.get(key)
         robot.brain.set key, status
 
+        skippable = skip_config.some (x) -> JSON.stringify(x) is JSON.stringify([lastKnownState, status])
+
         shouldNotify = false
         actioninfo = "no notification sent."
         if lastKnownState isnt status
-            if lastKnownState
+            if skippable
+                actioninfo = "skipping notification."
+            else if lastKnownState
                 actioninfo = "notifying as state changed."
                 shouldNotify = true
             else if status isnt "SUCCESS"
@@ -140,5 +148,5 @@ module.exports = (robot) ->
 
         if shouldNotify
             robot.messageRoom roomid, generateRoomMessage(data.name, data.build)
-        
+
         res.status(200).send('OK')
