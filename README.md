@@ -7,10 +7,16 @@ This script provies a HTTP endpoint `/hubot/jenkinsnotify` which is designed to 
 
 ## Environment variables
 
-### `HUBOT_JENKINS_NOTIFY_ROOMS` 
+### `HUBOT_JENKINS_NOTIFY_ROOMS`
 Contains a JSON object of key and values, the key is the url of the Jenkins server and the value is the room which message should be sent from.
 ```
-HUBOT_JENKINS_NOTIFY_ROOMS="{"https://ci.example.org": "#developers"}"
+HUBOT_JENKINS_NOTIFY_ROOMS="{\"https://ci.example.org\": \"#developers\"}"
+```
+
+### `HUBOT_JENKINS_SKIP_NOTIFICATION`
+Contains a JSON array of pairs containing state changes (before after) that should not lead to notification.
+```
+HUBOT_JENKINS_SKIP_NOTIFICATION="[ [ \"SUCCESS\", \"UNSTABLE\" ], [ \"FAILURE\", \"ABORTED\" ] ]"
 ```
 
 ## Notifying when state hasn't changed
