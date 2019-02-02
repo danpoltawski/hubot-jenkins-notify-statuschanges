@@ -35,7 +35,7 @@ getBuildStatusFromServer = (robot, server, roomid) ->
             return
         try
             data = JSON.parse(body)
-            failedjobs = (job for job in data.jobs when job.lastBuild.result != "SUCCESS")
+            failedjobs = (job for job in data.jobs when job.lastBuild != null and job.lastBuild.result != "SUCCESS")
         catch
             failedjobs = []
 
