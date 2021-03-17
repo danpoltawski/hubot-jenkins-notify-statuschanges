@@ -21,7 +21,7 @@ HUBOT_JENKINS_SKIP_NOTIFICATION="[ [ \"SUCCESS\", \"UNSTABLE\" ], [ \"FAILURE\",
 
 ## Notifying when state hasn't changed
 
-The url param `alwaysnotify` can be set to 1 to ensure that any notifications will be reported to the chatroom even if the state is the same as previously.
+The url param `alwaysinform` can be set to 1 to ensure that any notifications will be reported to the chatroom even if the state is the same as previously.
 
 ## Startup
 
